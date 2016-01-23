@@ -3,14 +3,14 @@ package trie
 import "testing"
 
 func TestTrieCreation(t *testing.T) {
-	tr := New()
+	tr := NewTrie()
 	if tr.Size() != 0 {
 		t.Error(`An empty trie should have zero size.`)
 	}
 }
 
 func TestPutAndGet(t *testing.T) {
-	tr := New()
+	tr := NewTrie()
 	tr.Put("Key", "Value")
 
 	if !tr.Contains("Key") {
@@ -18,30 +18,25 @@ func TestPutAndGet(t *testing.T) {
 	}
 
 	if tr.Size() != 1 {
-		t.Errorf(`Invalid Size reported. Expected :%d, Actual:d"`, 1, tr.Size())
+		t.Errorf(`Invalid Size reported. Expected :%d, Actual:%d"`, 1, tr.Size())
 	}
 
-	v, err := tr.Get("Key")
-	if err != nil {
-		t.Errorf(`Get() failed unexpectedly. Error: %v"`, err)
+	v, ok := tr.Get("Key")
+	if !ok {
+		t.Errorf(`Get("Key") failed to find the value.`)
 	}
 
 	if v != "Value" {
-		t.Errorf(`Get() failed to return correct value. Expected: %s, Actual: %s`, "Value", v)
+		t.Errorf(`Get("Key") failed to return correct value. Expected: %s, Actual: %s`, "Value", v)
 	}
 }
 
 func TestGetOnNonExistantKey(t *testing.T) {
-	tr := New()
+	tr := NewTrie()
 
-	v, err := tr.Get("NonExistant")
-	if err == nil {
+	v, ok := tr.Get("NonExistant")
+	if ok {
 		t.Errorf("Get() succeeded unexpectedly. Returned: %s", v)
-	}
-
-	expected := "Key not found: NonExistant"
-	if err.Error() != expected {
-		t.Errorf("Unexpected error format. Expected: %s, Actual: %s", expected, err.Error())
 	}
 }
 
@@ -60,7 +55,7 @@ func TestMultipleGetAndPutWithCommonPrefix(t *testing.T) {
 		{"ABCF", 7},
 	}
 
-	tr := New()
+	tr := NewTrie()
 	for i := 0; i < len(cases); i++ {
 		c := cases[i]
 		tr.Put(c.key, c.val)
@@ -71,25 +66,25 @@ func TestMultipleGetAndPutWithCommonPrefix(t *testing.T) {
 	}
 
 	for i := 0; i < len(cases); i++ {
-		v, err := tr.Get(cases[i].key)
+		v, ok := tr.Get(cases[i].key)
 
-		if err != nil {
-			t.Errorf("Unexpcted error: %v", err)
+		if !ok {
+			t.Errorf(`Get(%q) failed.`, cases[i].key)
 		}
 
 		if v != cases[i].val {
-			t.Error(`tr.Get(%q) != %q`, cases[i].key, cases[i].val)
+			t.Errorf("tr.Get(%q) != %d", cases[i].key, cases[i].val)
 		}
 	}
 
-	expected_depth := 4
-	if tr.Depth() != expected_depth {
-		t.Error("tr.Depth() != %d. Actual depth: %d", expected_depth, tr.Depth())
+	expectedDepth := 4
+	if tr.Depth() != expectedDepth {
+		t.Errorf("tr.Depth() != %d. Actual depth: %d", expectedDepth, tr.Depth())
 	}
 }
 
 func TestLongestPrefix(t *testing.T) {
-	tr := New()
+	tr := NewTrie()
 
 	tr.Put("A", true)
 	tr.Put("AB", true)
@@ -120,7 +115,7 @@ func TestLongestPrefix(t *testing.T) {
 }
 
 func TestKeysWithPrefix(t *testing.T) {
-	tr := New()
+	tr := NewTrie()
 
 	tr.Put("A", true)
 	tr.Put("AB", true)
@@ -142,6 +137,135 @@ func TestKeysWithPrefix(t *testing.T) {
 
 	for i := 0; i < len(cases); i++ {
 		actual := tr.KeysWithPrefix(cases[i].input)
+
+		if len(actual) != cases[i].count {
+			t.Errorf(`Expected prefix count: %d, Actual count: %d`, cases[i].count, len(actual))
+		}
+	}
+}
+
+func TestDepth(t *testing.T) {
+	tr := NewTrie()
+
+	cases := []struct {
+		input         string
+		expectedDepth int
+	}{
+		{"A", 1},
+		{"ABC", 3},
+		{"AB", 3},
+		{"ABCD", 4},
+		{"TTTTTT", 6},
+	}
+
+	for i := 0; i < len(cases); i++ {
+		tr.Put(cases[i].input, struct{}{})
+		if tr.Depth() != cases[i].expectedDepth {
+			t.Errorf("Expected depth: %d, Actual depth: %d", cases[i].expectedDepth, tr.Depth())
+		}
+	}
+
+	cases = []struct {
+		input         string
+		expectedDepth int
+	}{
+		{"TTTTTT", 4},
+		{"A", 4},
+		{"ABCD", 3},
+		{"AB", 3},
+		{"ABC", 0},
+	}
+
+	for i := 0; i < len(cases); i++ {
+		tr.Delete(cases[i].input)
+
+		if tr.Depth() != cases[i].expectedDepth {
+			t.Errorf("After deleting: %q, Expected depth: %d, Actual depth: %d",
+				cases[i].input,
+				cases[i].expectedDepth,
+				tr.Depth())
+		}
+	}
+}
+
+func TestDelete(t *testing.T) {
+	tr := NewTrie()
+
+	tr.Put("A", 1)
+	tr.Put("AB", 1)
+	tr.Put("ABC", 1)
+	tr.Put("ABCD", 1)
+	tr.Put("ABCDEFGH", 1)
+
+	cases := []struct {
+		input         string
+		expectedDepth int
+	}{
+		{"ZZZZZZZZZZZZZZZZZZZZZZZZ", 8}, // Failed deletion doesn't change depth.
+		{"ABCD", 8},                     // Deletion successful but subkey exists.
+		{"ABCDEFGH", 3},                 // Longest key left would be 'ABC'
+		{"ABC", 2},
+		{" ABCDEF", 2},
+		{"A", 2},
+		{"AB", 0},
+	}
+
+	for i := 0; i < len(cases); i++ {
+		size := tr.Size()
+		expectedSize := size - 1
+
+		if !tr.Contains(cases[i].input) {
+			expectedSize++
+		}
+
+		tr.Delete(cases[i].input)
+
+		if tr.Contains(cases[i].input) {
+			t.Errorf(`tr.Contains(%q) != false`, cases[i].input)
+		}
+
+		if tr.Size() != expectedSize {
+			t.Errorf("Expected size: %d, Actual size: %d", expectedSize, tr.Size())
+		}
+	}
+
+	if !tr.IsEmpty() {
+		t.Error("Expected an empty trie by now.")
+	}
+
+	if tr.Depth() != 0 {
+		t.Error("Depth of an empty trie must be 0.")
+	}
+}
+
+func TestKeysWithFuzzyMatch(t *testing.T) {
+	tr := NewTrie()
+
+	tr.Put("A", true)
+	tr.Put("AB", true)
+	tr.Put("BC", true)
+	tr.Put("ABC", true)
+	tr.Put("CAC", true)
+	tr.Put("ZZZZABC", true)
+
+	cases := []struct {
+		input string
+		count int
+	}{
+		{"A", 1},
+		{"..", 2},
+		{"AB", 1},
+		{".B", 1},
+		{"B.", 1},
+		{"ABC", 1},
+		{"A.C", 1},
+		{"..C", 2},
+		{"AB..", 0},
+		{"Z", 0},
+	}
+
+	for i := 0; i < len(cases); i++ {
+		actual := tr.KeysWithFuzzyMatch(cases[i].input)
 
 		if len(actual) != cases[i].count {
 			t.Errorf(`Expected prefix count: %d, Actual count: %d`, cases[i].count, len(actual))
